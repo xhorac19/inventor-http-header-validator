@@ -145,9 +145,6 @@ mkdir -p .claude/commands
 cp skill/generate-ruleset.md .claude/commands/generate-ruleset.md
 ```
 
-If you are working directly from a clone of this repository, the file at
-`.claude/commands/generate-ruleset.md` is already present and no copy is needed.
-
 ### Verification
 
 Start a Claude Code session in the project directory and type `/generate-ruleset`.
@@ -163,5 +160,4 @@ inlined. To change generation behaviour, edit
 Claude Code session (no restart required within the same session if the file is reloaded).
 
 The file `docs/prompts.md` is a companion document containing the same constraints
-formatted for use with external LLMs outside Claude Code. Keep it in sync with the
-command file when making significant constraint changes.
+formatted for use with external LLMs outside Claude Code.
