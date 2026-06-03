@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HTTP Header Ruleset",
+  "description": "Schema for YAML rule files consumed by the HTTP header security analyzer. Each file must be a top-level list of rule objects.\n",
+  "definitions": {
+    "rule_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "A unique identifier for a rule, used to reference it from the dependency field of other rules. Must start with a lowercase letter and contain only lowercase letters, digits, and underscores. Must be unique across all loaded rule files.\n",
+      "examples": [
+        "hsts_missing",
+        "x_frame_options_invalid",
+        "csp_missing"
+      ]
+    },
+    "header": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "description": "An HTTP header name in normalized lowercase form. Must contain only lowercase alphanumeric characters and hyphens, and must not start or end with a hyphen.\n",
+      "examples": [
+        "x-frame-options",
+        "strict-transport-security",
+        "content-security-policy"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "CRITICAL",
+        "WARNING",
+        "INFO"
+      ],
+      "description": "The severity level emitted when this rule fires (active=True). CRITICAL — immediate risk, should block or alert. WARNING  — misconfiguration or weak posture, should be remediated. INFO     — advisory finding, no immediate action required.\n"
+    },
+    "notify": {
+      "type": "boolean",
+      "description": "Whether a state transition on this rule should trigger an external notification. Rules at INFO severity or those that are purely advisory should typically set this to False.\n"
+    },
+    "regex_pattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A Python-compatible regular expression string. The pattern is compiled once at load time via re.compile() and matched against the raw header value string using re.search().\n",
+      "examples": [
+        "(?i)^(DENY|SAMEORIGIN)$",
+        "^\\*$",
+        "max-age=([0-9]+)"
+      ]
+    },
+    "info": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A human-readable explanation of what this rule detects and why it matters. Included in every HTTPHeaderInfo event this rule produces, regardless of whether the rule fired or not. Should explain the security implication and ideally suggest a remediation.\n"
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The set of conditions that must all be satisfied for this rule to fire (active=True). All present fields are evaluated together as a logical AND. At least one constraint must be specified.\n",
+      "properties": {
+        "exists": {
+          "type": "boolean",
+          "description": "Controls whether the header's presence or absence is itself a finding. True  — the header must be present for the rule to proceed.\n        If the header is absent the rule does not fire.\nFalse — the rule fires unconditionally when the header IS present.\n        Regex constraints are ignored when exists is False, since\n        the header being there at all is the entire finding.\n"
+        },
+        "regex": {
+          "$ref": "#/definitions/regex_pattern",
+          "description": "Fires when the header value matches this pattern. Only evaluated when the header is present. If exists is True and the header is absent, this constraint is never reached.\n"
+        },
+        "regex_neg": {
+          "$ref": "#/definitions/regex_pattern",
+          "description": "Fires when the header value does NOT match this pattern (negated match). Useful for asserting that a value must conform to a required format — the rule fires when the value falls outside that format. Only evaluated when the header is present.\n"
+        },
+        "dependencies": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "activated"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/rule_id",
+                "description": "The id of another rule thats being referenced. Rules are evaluated in topological order derived from the dependency graph, so YAML ordering does not need to be managed manually. A missing dependency id causes a load-time error."
+              },
+              "activated": {
+                "type": "boolean",
+                "description": "Whether or not the referenced rule should be triggered. Setting activated=true will trigger this dependency only when the referenced rule was also triggered, and vice-versa with activated=false."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "header",
+      "id",
+      "severity",
+      "notify",
+      "constraints",
+      "info"
+    ],
+    "properties": {
+      "header": {
+        "$ref": "#/definitions/header"
+      },
+      "id": {
+        "$ref": "#/definitions/rule_id"
+      },
+      "severity": {
+        "$ref": "#/definitions/severity"
+      },
+      "notify": {
+        "$ref": "#/definitions/notify"
+      },
+      "constraints": {
+        "$ref": "#/definitions/constraints"
+      },
+      "info": {
+        "$ref": "#/definitions/info"
+      }
+    }
+  }
+}

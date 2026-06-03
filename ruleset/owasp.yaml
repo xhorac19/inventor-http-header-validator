@@ -1,0 +1,468 @@
+# Source: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+
+- header: strict-transport-security
+  id: hsts_missing
+  severity: CRITICAL
+  notify: true
+  info: >
+    The Strict-Transport-Security header is absent.
+    Without it, browsers will not enforce HTTPS-only connections, enabling
+    man-in-the-middle attackers to downgrade connections to plaintext HTTP and
+    intercept or modify traffic.
+    Add "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload".
+  constraints:
+    exists: false
+
+- header: strict-transport-security
+  id: hsts_no_include_subdomains
+  severity: WARNING
+  notify: true
+  info: >
+    The Strict-Transport-Security header is present but lacks the includeSubDomains
+    directive.
+    Without it, subdomains are not covered by HSTS and remain vulnerable to
+    cookie-theft and MITM attacks that exploit unprotected subdomain connections.
+    Set "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload".
+  constraints:
+    exists: true
+    regex_neg: "(?i)includesubdomains"
+    dependencies:
+      - id: hsts_missing
+        activated: false
+
+- header: strict-transport-security
+  id: hsts_max_age_too_low
+  severity: WARNING
+  notify: true
+  info: >
+    The Strict-Transport-Security header is present but its max-age value contains
+    fewer than eight digits, indicating a duration well below the OWASP-recommended
+    two years (63072000 seconds).
+    A short max-age reduces HSTS protection because browsers re-allow HTTP connections
+    shortly after the TTL expires, reopening the window for MITM downgrade attacks.
+    Set "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload".
+  constraints:
+    exists: true
+    regex_neg: "(?i)max-age=[0-9]{8,}"
+    dependencies:
+      - id: hsts_missing
+        activated: false
+
+- header: strict-transport-security
+  id: hsts_no_preload
+  severity: INFO
+  notify: false
+  info: >
+    The Strict-Transport-Security header is present but lacks the preload directive.
+    Without preload, first-time visitors are not protected before the browser has
+    cached the HSTS policy, leaving a narrow window for MITM downgrade attacks on
+    initial connections.
+    Add the preload directive and submit the domain at
+    "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload".
+  constraints:
+    exists: true
+    regex_neg: "(?i)preload"
+    dependencies:
+      - id: hsts_missing
+        activated: false
+
+- header: x-frame-options
+  id: xfo_missing
+  severity: CRITICAL
+  notify: true
+  info: >
+    The X-Frame-Options header is absent.
+    Without it, any attacker-controlled page can embed this page in an iframe to
+    perform clickjacking attacks, tricking users into unknowingly interacting with
+    the victim page.
+    Add "X-Frame-Options: DENY" to block all framing, or
+    "X-Frame-Options: SAMEORIGIN" to allow same-origin frames only.
+  constraints:
+    exists: false
+
+- header: x-frame-options
+  id: xfo_invalid_value
+  severity: WARNING
+  notify: true
+  info: >
+    The X-Frame-Options header is present but its value is not DENY or SAMEORIGIN.
+    Only these two values are universally recognised by browsers; any other value
+    is silently ignored and provides no clickjacking protection.
+    Set "X-Frame-Options: DENY" or "X-Frame-Options: SAMEORIGIN".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*(DENY|SAMEORIGIN)\\s*$"
+    dependencies:
+      - id: xfo_missing
+        activated: false
+
+- header: x-content-type-options
+  id: xcto_missing
+  severity: WARNING
+  notify: true
+  info: >
+    The X-Content-Type-Options header is absent.
+    Without it, browsers may perform MIME-type sniffing and interpret a response
+    as a different content type than declared, enabling MIME-confusion and XSS attacks.
+    Set "X-Content-Type-Options: nosniff".
+  constraints:
+    exists: false
+
+- header: x-content-type-options
+  id: xcto_not_nosniff
+  severity: WARNING
+  notify: true
+  info: >
+    The X-Content-Type-Options header is present but its value is not "nosniff".
+    Only "nosniff" is recognised by browsers; any other value provides no
+    MIME-sniffing protection and may be silently ignored.
+    Set it to exactly "X-Content-Type-Options: nosniff".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*nosniff\\s*$"
+    dependencies:
+      - id: xcto_missing
+        activated: false
+
+- header: referrer-policy
+  id: referrer_policy_missing
+  severity: WARNING
+  notify: true
+  info: >
+    The Referrer-Policy header is absent.
+    Without it, browsers default to no-referrer-when-downgrade, which sends the
+    full URL as the Referer header on cross-origin requests and leaks sensitive
+    path and query-string data to third parties.
+    Add "Referrer-Policy: strict-origin-when-cross-origin".
+  constraints:
+    exists: false
+
+- header: referrer-policy
+  id: referrer_policy_unsafe
+  severity: WARNING
+  notify: true
+  info: >
+    The Referrer-Policy header is present but set to a value that can leak the
+    full request URL to cross-origin destinations, such as unsafe-url or
+    no-referrer-when-downgrade.
+    This exposes sensitive paths, tokens, or query parameters in the Referer header
+    to third-party servers, enabling information leakage.
+    Set "Referrer-Policy: strict-origin-when-cross-origin".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*(no-referrer|origin|origin-when-cross-origin|same-origin|strict-origin|strict-origin-when-cross-origin)\\s*$"
+    dependencies:
+      - id: referrer_policy_missing
+        activated: false
+
+- header: x-xss-protection
+  id: x_xss_protection_missing
+  severity: INFO
+  notify: false
+  info: >
+    The X-XSS-Protection header is absent.
+    Absence is acceptable and expected because browser XSS auditors are deprecated
+    and removed in modern browsers; this finding is informational only.
+    If the header is ever added, disable the XSS filter explicitly with
+    "X-XSS-Protection: 0" and use Content-Security-Policy instead.
+  constraints:
+    exists: false
+
+- header: x-xss-protection
+  id: x_xss_protection_enabled
+  severity: WARNING
+  notify: true
+  info: >
+    The X-XSS-Protection header is present with a value other than "0", meaning
+    a legacy browser XSS filter is enabled.
+    The XSS auditor was removed from modern browsers because it introduced its own
+    XSS vulnerabilities; having it active in older browsers provides no reliable
+    protection and can be weaponised by attackers.
+    Disable it explicitly with "X-XSS-Protection: 0" and rely on
+    Content-Security-Policy instead.
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*0\\s*$"
+    dependencies:
+      - id: x_xss_protection_missing
+        activated: false
+
+- header: cross-origin-opener-policy
+  id: coop_missing
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Opener-Policy header is absent.
+    Without it, cross-origin windows opened by or opening this page can retain a
+    browsing-context reference, enabling Spectre-based side-channel attacks and
+    cross-window script access.
+    Add "Cross-Origin-Opener-Policy: same-origin".
+  constraints:
+    exists: false
+
+- header: cross-origin-opener-policy
+  id: coop_invalid_value
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Opener-Policy header is present but its value is not
+    "same-origin".
+    Values other than same-origin allow cross-origin windows to retain a browsing
+    context reference to this page, weakening process isolation against
+    Spectre-based side-channel attacks.
+    Set "Cross-Origin-Opener-Policy: same-origin".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*same-origin\\s*$"
+    dependencies:
+      - id: coop_missing
+        activated: false
+
+- header: cross-origin-embedder-policy
+  id: coep_missing
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Embedder-Policy header is absent.
+    Without it, the page cannot opt in to cross-origin isolation, allowing
+    unauthenticated cross-origin resources to be embedded and potentially read
+    via Spectre side-channel attacks.
+    Add "Cross-Origin-Embedder-Policy: require-corp".
+  constraints:
+    exists: false
+
+- header: cross-origin-embedder-policy
+  id: coep_invalid_value
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Embedder-Policy header is present but its value is not
+    "require-corp".
+    Only require-corp enforces that all embedded sub-resources explicitly grant
+    cross-origin read permission, which is required for cross-origin isolation.
+    Set "Cross-Origin-Embedder-Policy: require-corp".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*require-corp\\s*$"
+    dependencies:
+      - id: coep_missing
+        activated: false
+
+- header: cross-origin-resource-policy
+  id: corp_missing
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Resource-Policy header is absent.
+    Without it, any cross-origin page can include this resource via no-cors requests
+    and potentially read its content through Spectre side-channel attacks.
+    Add "Cross-Origin-Resource-Policy: same-site" or
+    "Cross-Origin-Resource-Policy: same-origin".
+  constraints:
+    exists: false
+
+- header: cross-origin-resource-policy
+  id: corp_invalid_value
+  severity: WARNING
+  notify: false
+  info: >
+    The Cross-Origin-Resource-Policy header is present but its value is not
+    same-site or same-origin.
+    The value "cross-origin" explicitly permits any origin to read this resource,
+    negating the Spectre-class cross-origin isolation protection CORP is designed
+    to provide.
+    Set "Cross-Origin-Resource-Policy: same-site" or
+    "Cross-Origin-Resource-Policy: same-origin".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*(same-site|same-origin)\\s*$"
+    dependencies:
+      - id: corp_missing
+        activated: false
+
+- header: permissions-policy
+  id: permissions_policy_missing
+  severity: WARNING
+  notify: false
+  info: >
+    The Permissions-Policy header is absent.
+    Without it, scripts running in the page may request access to sensitive browser
+    features such as geolocation, camera, and microphone without any server-side
+    restriction.
+    Add at minimum "Permissions-Policy: geolocation=(), camera=(), microphone=()".
+  constraints:
+    exists: false
+
+- header: access-control-allow-origin
+  id: cors_missing
+  severity: INFO
+  notify: false
+  info: >
+    The Access-Control-Allow-Origin header is absent.
+    Absence is normal and expected for endpoints that do not serve cross-origin
+    requests; this finding is informational and acts as a guard for the wildcard
+    check on the same header.
+    If cross-origin access is required, specify exact allowed origins:
+    "Access-Control-Allow-Origin: https://yoursite.com".
+  constraints:
+    exists: false
+
+- header: access-control-allow-origin
+  id: cors_wildcard
+  severity: WARNING
+  notify: true
+  info: >
+    The Access-Control-Allow-Origin header is set to wildcard (*), granting any
+    origin read access to the response.
+    This exposes potentially sensitive response data to attacker-controlled pages
+    and is especially dangerous when the API handles authenticated or credentialled
+    requests.
+    Set an explicit origin: "Access-Control-Allow-Origin: https://yoursite.com".
+  constraints:
+    exists: true
+    regex: "(?i)^\\s*\\*\\s*$"
+    dependencies:
+      - id: cors_missing
+        activated: false
+
+- header: server
+  id: server_present
+  severity: WARNING
+  notify: true
+  info: >
+    The Server header is present and discloses the web server software and
+    possibly its version.
+    This enables targeted fingerprinting attacks where attackers identify the
+    exact software version and look up known CVEs for it.
+    Remove the Server header entirely or replace it with a non-informative value:
+    "Server: webserver".
+  constraints:
+    exists: true
+
+- header: x-powered-by
+  id: x_powered_by_present
+  severity: WARNING
+  notify: true
+  info: >
+    The X-Powered-By header is present and discloses the underlying technology
+    stack, such as PHP or ASP.NET, and often its version.
+    This assists attackers in identifying and exploiting version-specific
+    vulnerabilities in the disclosed framework.
+    Remove the header entirely from server configuration or application middleware.
+  constraints:
+    exists: true
+
+- header: x-aspnet-version
+  id: x_aspnet_version_present
+  severity: INFO
+  notify: false
+  info: >
+    The X-AspNet-Version header is present and reveals the exact .NET runtime
+    version in use.
+    While not directly exploitable alone, this version string reduces attacker
+    reconnaissance effort by narrowing the set of applicable CVEs.
+    Remove it by setting enableVersionHeader="false" in the httpRuntime element
+    of Web.config.
+  constraints:
+    exists: true
+
+- header: x-aspnetmvc-version
+  id: x_aspnetmvc_version_present
+  severity: INFO
+  notify: false
+  info: >
+    The X-AspNetMvc-Version header is present and discloses the ASP.NET MVC
+    framework version.
+    This aids attacker reconnaissance by confirming the MVC framework in use
+    and narrowing the relevant CVE search space.
+    Remove it by setting MvcHandler.DisableMvcResponseHeader = true in
+    Application_Start, or via equivalent middleware configuration.
+  constraints:
+    exists: true
+
+- header: expect-ct
+  id: expect_ct_present
+  severity: INFO
+  notify: false
+  info: >
+    The Expect-CT header is present but has been deprecated by all major browsers
+    and the IETF.
+    Sending a deprecated header provides no security benefit and may cause
+    confusion during security audits.
+    Remove the Expect-CT header from server responses entirely.
+  constraints:
+    exists: true
+
+- header: public-key-pins
+  id: public_key_pins_present
+  severity: WARNING
+  notify: true
+  info: >
+    The Public-Key-Pins (HPKP) header is present.
+    HPKP has been removed from all major browsers and, when misconfigured, causes
+    a permanent denial-of-service by pinning an incorrect public key and blocking
+    all HTTPS access for the duration of the max-age.
+    Remove the Public-Key-Pins header immediately and rely on Certificate
+    Transparency monitoring instead.
+  constraints:
+    exists: true
+
+- header: x-dns-prefetch-control
+  id: x_dns_prefetch_control_missing
+  severity: INFO
+  notify: false
+  info: >
+    The X-DNS-Prefetch-Control header is absent.
+    Without it, some browsers enable DNS prefetching by default, which can leak
+    information about links on the page to DNS resolvers before the user
+    clicks them.
+    Add "X-DNS-Prefetch-Control: off" to disable prefetching.
+  constraints:
+    exists: false
+
+- header: x-dns-prefetch-control
+  id: x_dns_prefetch_control_not_off
+  severity: INFO
+  notify: false
+  info: >
+    The X-DNS-Prefetch-Control header is present but its value is not "off",
+    meaning DNS prefetching remains active.
+    Active prefetching can disclose browsing patterns to DNS resolvers before
+    the user initiates those connections.
+    Set "X-DNS-Prefetch-Control: off".
+  constraints:
+    exists: true
+    regex_neg: "(?i)^\\s*off\\s*$"
+    dependencies:
+      - id: x_dns_prefetch_control_missing
+        activated: false
+
+- header: content-security-policy
+  id: csp_missing
+  severity: CRITICAL
+  notify: true
+  info: >
+    The Content-Security-Policy header is absent.
+    Without it, browsers apply no script or resource restrictions, enabling
+    attackers to inject and execute arbitrary scripts via XSS and data-injection
+    attacks.
+    Add a restrictive policy such as "Content-Security-Policy: default-src 'self'".
+  constraints:
+    exists: false
+
+- header: permissions-policy
+  id: permissions_policy_no_interest_cohort
+  severity: INFO
+  notify: false
+  info: >
+    The Permissions-Policy header is present but does not include the
+    interest-cohort=() directive.
+    Without it, the browser may participate in FLoC cohort tracking, exposing
+    users to interest-based profiling without their explicit consent.
+    Add the directive: "Permissions-Policy: interest-cohort=()".
+  constraints:
+    exists: true
+    regex_neg: "(?i)interest-cohort"
+    dependencies:
+      - id: permissions_policy_missing
+        activated: false
