@@ -9,11 +9,11 @@ ruleset/
   owasp.yaml                      # bundled OWASP HTTP Headers ruleset
 skill/
   generate-ruleset.md             # canonical source for the Claude Code slash command
-prompts.md                        # LLM prompt library for external ruleset generation
 .claude/
   commands/
     generate-ruleset.md           # installed copy of skill/generate-ruleset.md (Claude Code reads this)
 docs/
+  prompts.md                      # LLM prompt library for external ruleset generation
   usage.md
   deployment.md
   developer.md
@@ -285,10 +285,10 @@ The command file defines fixed column value formats for all planning tables to e
 consistent output across runs. Column values are constrained to enumerated tokens
 rather than free-form prose, making successive plans directly comparable.
 
-### Relationship to `prompts.md`
+### Relationship to `docs/prompts.md`
 
-`prompts.md` contains the same constraints and use-case prompts formatted for use with
-external LLMs (e.g. ChatGPT, API calls). It is the human-facing companion to the
+`docs/prompts.md` contains the same constraints and use-case prompts formatted for use
+with external LLMs (e.g. ChatGPT, API calls). It is the human-facing companion to the
 command file. The two documents serve the same purpose in different contexts and should
 be kept in sync when constraints change. The command file is authoritative for the
-Claude Code skill; `prompts.md` is authoritative for external LLM usage.
+Claude Code skill; `docs/prompts.md` is authoritative for external LLM usage.

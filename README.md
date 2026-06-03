@@ -8,71 +8,11 @@
 
 ## Architecture
 
-### Components
+Rules are loaded from YAML files into a topologically sorted `RuleSet`, incoming JSON log entries are validated and their headers evaluated against the ruleset, and a notification is emitted only when a rule's active state differs from the cached value for that URL.
 
-**1. Rule loading (`load_rules`)**
-
-Rules are read from one or more YAML files and compiled into a `RuleSet`. Each rule is parsed into a `HeaderRule` dataclass, which holds the header name, match constraints, dependency references, severity, and notification flag. Before the ruleset is used, all dependency references are validated and the rules are topologically sorted using Kahn's algorithm so that rules depending on the outcome of other rules are always evaluated after their prerequisites. Regular expressions within the loaded rules are pre-compiled and stored in a `re.Pattern` structure.
-
-**2. Log ingestion (`HTTPLogAnalyzer.ingest_log`)**
-
-The analyzer accepts a raw JSON string representing a single HTTP log entry. The entry is validated against a fixed JSON Schema (`HTTP_LOG_SCHEMA`) that requires `Meta`, `Config`, and `Result` fields. If valid, the headers found in `Result.headers` are forwarded to the header checker.
-
-**3. Header evaluation (`HTTPLogAnalyzer.check_headers`)**
-
-Headers are normalized to lowercase and matched against the ruleset. For each rule, `_evaluate_rule` walks through the rule's constraints in the following order:
- - dependencies
- - existence check
- - positive regex
- - negative regex
-
-It then returns an active or inactive `HTTPHeaderInfo` result. Rules that fire (go active) have their ID recorded in `matched_ids`, which the rules with dependencies can later inspect.
-
-**4. Cache and notification (`HTTPLogAnalyzer._handle_cache`)**
-
-Every result is compared against the on-disk JSON cache keyed by target URL. A result is only appended to the output list when its active/inactive state differs from the cached value *and* the rule has `notify: true`. The cache is written back to disk at the end of each `ingest_log` call.
-
-### Data flow
 ![dataflow.png](dataflow.png)
 
-### Key classes and dataclasses
-
-| Name | Role |
-|---|---|
-| `HeaderRule` | Compiled representation of one YAML rule |
-| `RuleSet` | Holds rules indexed by header name and rule ID |
-| `Dependency` | References another rule's outcome as a prerequisite |
-| `HTTPLogAnalyzer` | Stateful analyzer that owns the ruleset and the cache |
-| `HTTPHeaderInfo` | A single rule evaluation result, active or inactive |
-| `Severity` | Enum: `CRITICAL`, `WARNING`, `INFO` |
-
-### Topological sort
-
-Rules with dependencies must be sorted so they evaluate after their prerequisites. The loader uses Kahn's algorithm on the dependency graph. If a cycle is detected, loading fails with an error listing the involved rule IDs.
-
-```python
-# Sort in load_rules()
-sorted_rules = _dependency_sort(ruleset.by_id)
-for rule in sorted_rules:
-    ruleset.by_header.setdefault(rule.header, []).append(rule)
-```
-
-### Cache mechanics
-
-The cache is a JSON file keyed by target URL, then by rule ID, storing the last known `active` boolean:
-
-```json
-{
-  "https://example.com": {
-    "headers": {
-      "hsts_missing": true,
-      "csp_missing": false
-    }
-  }
-}
-```
-
-A notification is emitted only when the stored value differs from the current evaluation result. This means the first run against a URL always notifies (no prior state), and subsequent runs notify only on changes.
+For a full description of components, classes, the evaluation engine, and cache internals see [docs/developer.md](docs/developer.md).
 
 ---
 
@@ -211,79 +151,7 @@ Each dependency entry has two required fields:
 
 Because the loader sorts rules topologically, a dependency's outcome is always known before the dependent rule runs. Circular dependencies cause loading to fail.
 
----
-
-### Constraint evaluation order
-
-When a rule is evaluated, constraints are checked in this fixed order. The rule goes inactive and stops at the first failing check:
-
- 1. **Dependencies** - all `dependency.activated` conditions must match the actual outcomes of referenced rules.
- 2. **`exists: true`** - header must be present.
- 3. **`exists: false`** - header must be absent. If absent, `regex` and `regex_neg` are skipped (no value to match).
- 4. **`regex`** - value must match the pattern.
- 5. **`regex_neg`** - value must not match the pattern.
-
-If all checks pass, the rule fires (active). Its ID is added to `matched_ids` so dependent rules can reference it.
-
----
-
-### Complete examples
-
-**Flag a missing security header:**
-```yaml
-- header: content-security-policy
-  id: csp_missing
-  severity: WARNING
-  notify: true
-  constraints:
-    exists: false
-  info: Content-Security-Policy is missing.
-```
-
-**Flag an information-disclosure header that is present:**
-```yaml
-- header: x-powered-by
-  id: x_powered_by_present
-  severity: WARNING
-  notify: true
-  constraints:
-    exists: true
-  info: X-Powered-By reveals technology stack details. Remove it.
-```
-
-**Flag a header with an invalid value (allowlist approach):**
-```yaml
-- header: referrer-policy
-  id: referrer_policy_missing_or_unsafe
-  severity: WARNING
-  notify: true
-  constraints:
-    exists: true
-    regex_neg: "(?i)^(no-referrer|no-referrer-when-downgrade|strict-origin|strict-origin-when-cross-origin)$"
-  info: Referrer-Policy is set to an insufficiently strict value.
-```
-
-**Dependent rule - only fires when a sibling rule did not:**
-```yaml
-- header: x-xss-protection
-  id: x_xss_protection_missing
-  severity: WARNING
-  notify: true
-  constraints:
-    exists: false
-  info: X-XSS-Protection is absent; explicitly set it to 0.
-
-- header: x-xss-protection
-  id: x_xss_protection_enabled
-  severity: CRITICAL
-  notify: true
-  constraints:
-    dependencies:
-      - id: x_xss_protection_missing
-        activated: false   # only runs when the header IS present
-    regex_neg: "^0$"       # fires when the value is anything other than "0"
-  info: X-XSS-Protection is enabled; this is dangerous. Set to 0.
-```
+For constraint evaluation order and complete worked examples see [docs/developer.md](docs/developer.md).
 
 ## LLM Rules Generation
 
@@ -325,99 +193,17 @@ Both arguments are optional — the skill asks for them if not provided.
 
 The skill source file is at [`skill/generate-ruleset.md`](skill/generate-ruleset.md). It is self-contained — the JSON schema and all generation constraints are embedded directly so it works without any external dependencies. See [`docs/deployment.md`](docs/deployment.md) for installation instructions.
 
-For the full prompt library (suitable for use with any LLM outside Claude Code) see [`prompts.md`](prompts.md).
-
----
-
 ### Manual prompts (any LLM)
 
-The file `rules_schema.json` contains a draft-07 schema that defines the valid structure of a ruleset. Provide it in the LLM context alongside the prompts in [`prompts.md`](prompts.md). The following are quick-reference examples; the full prompt library with structured constraints is in `prompts.md`.
-
-#### System prompt prefix
-
-```
-You are a YAML file generator. Your task is to generate a set of YAML rules that are meant to validate HTTP headers on an arbitrary HTTP endpoint. Use the provided JSON draft-07 schema as a guideline on how the rule structure is defined.
-
-[include rules_schema.json]
-```
-
-#### OWASP Cheat Sheet Generation
-This prompt will generate a new set of rules based on the OWASP HTTP Header Cheat Sheet.
-```
-Your task is to generate a set of rules that are meant to ensure that an HTTP endpoint adheres to security best practices as written by the OWASP Foundation at HTTP Headers Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
-```
-
-#### OWASP Cheat Sheet Update
-
-This prompt will update the OWASP rules.
-
-```
-Your task is to update the provided YAML ruleset. The ruleset is meant to ensure that an HTTP endpoint adheres to security best practices as written by the OWASP Foundation at HTTP Headers cheat sheet: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html. Make sure the ruleset is up-to-date with current practices. Provide recommendations on improvements of the ruleset. Provide an updated ruleset from the recommendations you found.
-
-[include existing owasp_headers.yml]
-```
-
-#### Rules specific for an endpoint
-
-This prompt will generate rules that ensure validity of HTTP headers on a given endpoint, based off of existing list of HTTP headers.
-
-```
-Provided below is a set of HTTP headers in a JSON format. Your task is to generate a set of rules that maintain stability and security of these headers. 
-Construct rules only for headers that it makes sense to monitor. Provide an explanation for each rule.
-
-[JSON Headers, e.g.: {"x-served-by":"cache-vie6344-vie","x-cache":"hit","x-cache-hits":"0","x-timer":"s1749081863.560052,vs0,ve3"...}]
-```
-
-### System Prompt
-Used prompts should be prefixed by this string.
-```
-You are a YAML file generator. Your task is to generate a set of YAML rules that are meant to validate HTTP headers on an arbitrary HTTP endpoint. Use the provided JSON draft-07 schema as a guideline on how the rule structure is defined.
-
-[include rules_schema.json]
-```
-
-### User Prompts
-Following are few use-cases examples for ruleset generation.
-
-#### OWASP Cheat Sheet Generation
-This prompt will generate a new set of rules based on the OWASP HTTP Header Cheet Sheet.
-```
-Your task is to generate a set of rules that are meant to ensure that an HTTP endpoint adheres to security best practices as written by the OWASP Foundation at HTTP Headers Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
-```
-
-#### OWASP Cheat Sheet Update
-
-This prompt will update the OWASP rules.
-
-```
-Your task is to update the provided YAML ruleset. The ruleset is meant to ensure that an HTTP endpoint adheres to security best practices as written by the OWASP Foundation at HTTP Headers cheat sheet: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html. Make sure the ruleset is up-to-date with current practices. Provide recommendations on improvements of the ruleset. Provide an updated ruleset from the recommendations you found.
-
-[include existing owasp_headers.yml]
-```
-
-#### Rules specific for an endpoint
-
-This prompt will generate rules that ensure validity of HTTP headers on a given endpoint, based off of existing list of HTTP headers.
-
-```
-Provided below is a set of HTTP headers in a JSON format. Your task is to generate a set of rules that maintain stability and security of these headers. 
-Construct rules only for headers that it makes sense to monitor. Provide an explanation for each rule.
-
-[JSON Headers, e.g.: {"x-served-by":"cache-vie6344-vie","x-cache":"hit","x-cache-hits":"0","x-timer":"s1749081863.560052,vs0,ve3"...}]
-```
+For use with any LLM outside Claude Code, see [`docs/prompts.md`](docs/prompts.md) for the full prompt library with system prompts, structured constraints, and use-case templates.
 
 ## Script running
 
-The script file `http_header_validator.py` accepts the following parameters:
- 
- - `--rules` - One or more files with YAML rules. At least one file must be provided.
- - `--cache` - A json file for cached states. Defaults to `cache.json`.
- - `--log-file` - Log file to scan.
-
-Example run:
 ```bash
-python3 http_header_validator.py \ 
---rules owasp_headers.yml \ 
---log-file data/http_logs.json \
---cache /tmp/http_validator_cache.json
+python3 http_header_validator.py \
+  --rules ruleset/owasp.yaml \
+  --log-file data/http_logs.json \
+  --cache /tmp/http_validator_cache.json
 ```
+
+For the full CLI reference, log file format, and output format see [docs/usage.md](docs/usage.md).
