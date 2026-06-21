@@ -146,46 +146,10 @@ dict to disk as JSON at the end of each `ingest_log` call.
 
 ## Writing rules
 
-Rules are YAML lists validated against `rules_schema.json` (draft-07) at generation
-time by the skill. The analyzer itself does not re-validate YAML against the schema at
-load time — it only parses the fields it knows about and raises `ValueError` on
-structural problems it detects (duplicates, unknown dependency IDs, cycles).
-
-### Constraint evaluation order
-
-When writing rules that check a header's value, always pair them with a `_missing`
-guard rule:
-
-```yaml
-# 1. The guard — fires when the header is absent
-- header: example-header
-  id: example_missing
-  severity: WARNING
-  notify: true
-  info: >
-    The Example header is absent. This enables attack X. Set
-    "Example: recommended-value".
-  constraints:
-    exists: false
-
-# 2. The value check — only runs when the header is present
-- header: example-header
-  id: example_bad_value
-  severity: WARNING
-  notify: true
-  info: >
-    The Example header is present but set to an insecure value. This enables
-    attack X. Set "Example: recommended-value".
-  constraints:
-    exists: true
-    regex_neg: "(?i)^recommended-value$"
-    dependencies:
-      - id: example_missing
-        activated: false
-```
-
-Without the dependency guard, `regex_neg` on an absent header would trivially fire
-(there is no value to match), producing a false positive.
+Rules are YAML objects contained in lists defined by draft-07 schema written in `rules_schema.json`.
+The analyzer itself does not re-validate YAML against the schema at load time — it only
+parses the fields it knows about and raises `ValueError` on structural problems it detects
+(duplicates, unknown dependency IDs, cycles).
 
 ### Cross-header dependencies
 
@@ -219,9 +183,9 @@ The Markdown body is the instruction set Claude follows when the command is invo
 
 The command file inlines both the JSON schema and all generation constraints. This
 means the skill works without reading any other project files at invocation time and
-continues to work correctly even if the user renames or moves `rules_schema.json` or
-`prompts.md`. The trade-off is that changes to the schema or constraints must be
-manually reflected in the command file.
+continues to work correctly even if the user renames or moves `rules_schema.json`.
+The trade-off is that changes to the schema or constraints must be manually 
+reflected in the command file.
 
 ### Execution flow
 
