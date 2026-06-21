@@ -23,6 +23,44 @@ package structure.
 
 ---
 
+## Use cases and personas
+
+The system has two broad roles: **ruleset authors**, who define what the analyzer checks,
+and **operators**, who run the analyzer against live log data and act on its output.
+A single person may fill both roles, or they may be split across a team.
+
+### System developer (ruleset author)
+
+Builds and maintains the YAML rulesets. Typical workflows: generate a baseline from any
+security recommendation source — a best-practices URL, an internal policy document, or an
+industry standard — via `/generate-ruleset` or the external LLM prompts; generate
+endpoint-specific rules from a captured headers snapshot; re-run generation when the
+upstream source updates (use case 2 — diff against the source URL); audit an inherited or
+hand-written ruleset for gaps and style violations.
+
+### Security engineer / analyst
+
+Runs the analyzer against log feeds from one or more endpoints. Triages alerts by severity
+— investigates `CRITICAL` findings first, reviews `WARNING` findings for context-dependent
+risk, treats `INFO` findings as a hygiene backlog. Uses the cache's state-change mechanism
+to track when a header disappears or reappears rather than being alerted on every log line.
+
+### DevOps / platform engineer
+
+Integrates the analyzer into a deployment pipeline or cron job. Uses stability rules
+(severity `INFO`, `notify: true`) to catch unexpected header changes between releases —
+e.g. a CDN configuration change that silently strips `Strict-Transport-Security`. Gets
+alerted post-deploy rather than after a security review.
+
+### Application / endpoint owner
+
+Runs the analyzer against their own service's logs to verify headers are correct and
+monitor for regressions over time. Acts on remediation guidance in the `info` field to
+fix missing or misconfigured headers, then watches the cache flip from active to inactive
+as the fix rolls out.
+
+---
+
 ## Codebase overview
 
 ### Data classes
