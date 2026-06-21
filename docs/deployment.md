@@ -5,8 +5,8 @@
 | Requirement | Minimum version |
 |---|---|
 | Python | 3.10 |
-| pyyaml | any recent |
-| jsonschema | any recent |
+| pyyaml | tested with 6.0.3 |
+| jsonschema | tested with 4.26.0 |
 
 Install dependencies:
 
@@ -59,8 +59,7 @@ python3 http_header_validator.py \
 ### 3. Wire it into your HTTP monitoring pipeline
 
 The analyzer expects one JSON log entry per line on stdin or from a file. Feed it the
-output of whatever HTTP monitoring tool you use by writing entries in the format
-described in the usage manual.
+output of the HTTP monitoring tool.
 
 **Continuous log tail** — if your monitoring tool appends to a log file in real time,
 run the analyzer as a log processor that tails the file:
@@ -96,7 +95,7 @@ python3 http_header_validator.py \
 ```
 
 To suppress `CRITICAL`-only noise during initial deployment (the first run against a
-URL always notifies), allow one pass to warm the cache before connecting output to
+URL always notifies), allow one pass to "warm" the cache before connecting output to
 alerting.
 
 ---
@@ -158,6 +157,3 @@ The command file is self-contained — the JSON schema and all generation constr
 inlined. To change generation behaviour, edit
 `.claude/commands/generate-ruleset.md` directly. Changes take effect in the next
 Claude Code session (no restart required within the same session if the file is reloaded).
-
-The file `docs/prompts.md` is a companion document containing the same constraints
-formatted for use with external LLMs outside Claude Code.
