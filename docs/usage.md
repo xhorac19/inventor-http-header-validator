@@ -9,12 +9,7 @@ changes relative to the previous run for that URL. Results are cached per URL so
 state transitions produce output — a rule firing for the first time, a previously
 failing rule starting to pass, or vice versa.
 
----
-
-## Prerequisites
-
-- Python 3.10 or later
-- `pyyaml` and `jsonschema` Python packages installed
+For installation, requirements, and pipeline setup see [deployment.md](deployment.md).
 
 ---
 
@@ -132,11 +127,6 @@ output. On subsequent runs only changes produce output.
 
 The project ships a Claude Code skill that automates ruleset creation and maintenance
 using an AI model. It is invoked as a slash command inside a Claude Code session.
-
-### Prerequisites
-
-- Claude Code installed and running in the project directory
-- The command file present at `.claude/commands/generate-ruleset.md`
 
 ### Invocation
 
