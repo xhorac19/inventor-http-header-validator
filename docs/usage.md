@@ -1,5 +1,33 @@
 # Usage Manual
 
+## Motivation
+
+HTTP response headers carry a wide range of information: caching policies, content
+negotiation, server identity, security directives, and custom application metadata.
+Any of these can change unexpectedly — a deploy, a proxy reconfiguration, or an
+infrastructure change can silently alter headers across every response without raising
+an application-level error.
+
+This tool monitors header content over time by evaluating a configurable set of rules
+against each HTTP response and emitting a notification only when a rule's outcome
+*changes* relative to the previous run for that URL. Stable responses produce no output;
+any deviation from the expected state is reported immediately.
+
+Because rules are defined in YAML and can check for the presence, absence, or specific
+values of any header, the tool is applicable to a broad range of concerns:
+
+- **Security posture** — detect when a header that prevents clickjacking, MITM, or
+  MIME confusion is dropped or weakened.
+- **Stability monitoring** — assert that headers observed on a known-good endpoint do
+  not drift (e.g. `Cache-Control` directives, `Content-Type` charset, server version
+  tokens).
+- **Compliance verification** — maintain a ruleset derived from an internal policy or
+  an external standard and run it periodically to verify adherence.
+- **Regression detection in CI/CD** — run after every deploy against representative
+  endpoints and fail the pipeline if any rule transitions to active.
+
+---
+
 ## Overview
 
 `http_header_validator.py` is a rule-driven HTTP header security analyzer. It reads
